@@ -15,6 +15,8 @@ public class HashMapUtils {
         Object[] allKey = hashMap.keySet().toArray();
         String result = "";
         for (int i = 0; i < allKey.length; i++) {
+                if (allKey[i] == null)
+                continue;
             String key = allKey[i].toString();
             if (ignoreNull && (hashMap.get(key) == null || hashMap.get(key).equals(""))) continue;
             result += key + " = " + hashMap.get(key) + (oneline ? (i + 1 == allKey.length ? "" : ", ") : "\r\n");

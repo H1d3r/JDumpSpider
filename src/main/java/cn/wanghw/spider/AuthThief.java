@@ -19,6 +19,8 @@ public class AuthThief implements ISpider {
             return true;
         } else if (key.contains("cookie")) {
             return true;
+        } else if (key.contains("token")) {
+            return true;
         }
         return false;
     }
@@ -30,7 +32,7 @@ public class AuthThief implements ISpider {
             for (Iterator it = heapHolder.getClasses(); it.hasNext(); ) {
                 Object clazz = it.next();
                 String clazzName = heapHolder.getClassName(clazz).toLowerCase();
-                if (clazzName.contains("$") && (clazzName.split("\\$")[1].endsWith("entry")))
+                if (clazzName.contains("$") && (clazzName.split("\\$")[1].endsWith("entry") || clazzName.split("\\$")[1].endsWith("node")))
                     mapEntryClasses.add(clazz);
             }
             for (Object clazz : mapEntryClasses) {
