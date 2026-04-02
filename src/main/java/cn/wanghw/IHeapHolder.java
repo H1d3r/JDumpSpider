@@ -52,4 +52,6 @@ public interface IHeapHolder {
     String toString(Object instance);
 
     byte[] toByteArray(Object _instance);
+
+    void dispose();
 }

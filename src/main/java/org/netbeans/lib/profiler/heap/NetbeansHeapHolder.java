@@ -279,4 +279,9 @@ public class NetbeansHeapHolder implements IHeapHolder {
             }
         } else return null;
     }
+
+    public void dispose() {
+        _heap = null;
+        snapshot = null;
+    }
 }

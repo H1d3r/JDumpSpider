@@ -254,6 +254,11 @@ public class GraalvmHeapHolder implements IHeapHolder {
         return null;
     }
 
+    public void dispose() {
+        _heap = null;
+        snapshot = null;
+    }
+
     public String join(CharSequence delimiter,
                        Iterable<? extends CharSequence> elements) {
         _StringJoiner.requireNonNull(delimiter);
