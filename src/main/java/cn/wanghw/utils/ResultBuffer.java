@@ -14,11 +14,15 @@ public class ResultBuffer {
         if (text == null || text.length() == 0) {
             return true;
         }
-        if (sb.length() >= SpiderLimits.MAX_RESULT_CHARS) {
+        if (SpiderLimits.lowMemory() || sb.length() >= SpiderLimits.maxResultChars()) {
             markTruncated();
             return false;
         }
-        int room = SpiderLimits.MAX_RESULT_CHARS - sb.length();
+        int room = SpiderLimits.maxResultChars() - sb.length();
+        if (room <= 0) {
+            markTruncated();
+            return false;
+        }
         if (text.length() > room) {
             sb.append(text.substring(0, room));
             markTruncated();
@@ -36,7 +40,7 @@ public class ResultBuffer {
     }
 
     public boolean hasRoom() {
-        return !truncated;
+        return !truncated && !SpiderLimits.lowMemory() && sb.length() < SpiderLimits.maxResultChars();
     }
 
     public boolean isEmpty() {

@@ -1,6 +1,7 @@
 package cn.wanghw;
 
 import cn.wanghw.spider.*;
+import cn.wanghw.utils.SpiderLimits;
 import org.graalvm.visualvm.lib.jfluid.heap.GraalvmHeapHolder;
 import org.netbeans.lib.profiler.heap.NetbeansHeapHolder;
 
@@ -121,6 +122,8 @@ public class Main {
                 }
                 throw new Exception("Failed to open heap dump", t);
             }
+            SpiderLimits.refresh();
+            System.out.println("[+] SpiderLimits: " + SpiderLimits.describe());
             if (flag.contains("export-strings")) {
                 if (!spiderCall(new ExportAllString(), heapHolder, targetOut)) {
                     return 1;
@@ -179,8 +182,19 @@ public class Main {
             return true;
         } catch (OutOfMemoryError e) {
             System.gc();
+            SpiderLimits.refresh();
             out.println("[-] aborted: out of memory\r\n");
             return false;
+        } finally {
+            recoverHeapBudget();
+        }
+    }
+
+    private void recoverHeapBudget() {
+        SpiderLimits.refresh();
+        if (SpiderLimits.lowMemory()) {
+            System.gc();
+            SpiderLimits.refresh();
         }
     }
 

@@ -67,7 +67,7 @@ public class OSS01 implements ISpider {
     private void dump(IHeapHolder heapHolder, LinkedHashMap<String, String> values, Object clazz) {
         Iterator it = heapHolder.getInstancesIterator(clazz);
         int visited = 0;
-        while (it.hasNext() && visited < SpiderLimits.MAX_INSTANCES_PER_CLASS) {
+        while (it.hasNext() && SpiderLimits.allowMoreInstances(visited)) {
             Object instance = it.next();
             visited++;
             String key = heapHolder.getFieldStringValue(instance, "key");

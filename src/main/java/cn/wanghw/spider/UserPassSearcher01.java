@@ -71,7 +71,7 @@ public class UserPassSearcher01 implements ISpider {
                 List<String> instanceInfo = new LinkedList<String>();
                 Iterator instances = heapHolder.getInstancesIterator(clazz);
                 int visited = 0;
-                while (instances.hasNext() && visited < SpiderLimits.MAX_INSTANCES_PER_CLASS) {
+                while (instances.hasNext() && SpiderLimits.allowMoreInstances(visited) && result.hasRoom()) {
                     Object instance = instances.next();
                     visited++;
                     String dumpString = HashMapUtils.dumpString(heapHolder.getFieldsByNameList(instance, fieldMap), true, false, true);

@@ -25,7 +25,7 @@ public class PropertySource05 implements ISpider {
             HashMap<String, String> values = new HashMap<String, String>();
             Iterator it = heapHolder.getInstancesIterator(clazz);
             int visited = 0;
-            while (it.hasNext() && visited < SpiderLimits.MAX_INSTANCES_PER_CLASS) {
+            while (it.hasNext() && SpiderLimits.allowMoreInstances(visited)) {
                 values.putAll(heapHolder.arrayDump(heapHolder.getMap(it.next())));
                 visited++;
             }

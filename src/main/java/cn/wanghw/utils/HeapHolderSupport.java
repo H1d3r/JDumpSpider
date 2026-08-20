@@ -49,10 +49,11 @@ public final class HeapHolderSupport {
         if (text == null) {
             return "";
         }
-        if (text.length() <= SpiderLimits.MAX_STRING_CHARS) {
+        int maxChars = SpiderLimits.maxStringChars();
+        if (text.length() <= maxChars) {
             return text;
         }
-        return text.substring(0, SpiderLimits.MAX_STRING_CHARS) + "...";
+        return text.substring(0, maxChars) + "...";
     }
 
     public static int toInt(Object obj, int def) {
@@ -263,7 +264,7 @@ public final class HeapHolderSupport {
 
     private static List valuesIfSmall(Object array) {
         int arrLen = arrayLength(array);
-        if (arrLen < 0 || arrLen > SpiderLimits.MAX_PRIMITIVE_ARRAY_FALLBACK) {
+        if (arrLen < 0 || arrLen > SpiderLimits.maxPrimitiveArrayFallback()) {
             return null;
         }
         Object values = invoke(array, "getValues", NO_ARGS, null);

@@ -26,10 +26,10 @@ public class HashMapUtils {
             if (ignoreNull && (val == null || val.equals(""))) {
                 continue;
             }
-            if (val != null && val.length() > SpiderLimits.MAX_STRING_CHARS) {
-                val = val.substring(0, SpiderLimits.MAX_STRING_CHARS) + "...";
+            if (val != null && val.length() > SpiderLimits.maxStringChars()) {
+                val = val.substring(0, SpiderLimits.maxStringChars()) + "...";
             }
-            if (result.length() >= SpiderLimits.MAX_RESULT_CHARS) {
+            if (SpiderLimits.lowMemory() || result.length() >= SpiderLimits.maxResultChars()) {
                 result.append("... truncated");
                 break;
             }

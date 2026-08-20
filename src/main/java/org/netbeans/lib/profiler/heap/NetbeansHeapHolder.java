@@ -236,28 +236,30 @@ public class NetbeansHeapHolder implements IHeapHolder {
         Object offset = instance.getValueOfField("offset");
         Object count = instance.getValueOfField("count");
         int charLen = HeapHolderSupport.estimateCharLength(value, coder, offset, count);
-        if (charLen >= 0 && charLen <= SpiderLimits.MAX_STRING_CHARS) {
+        int maxChars = SpiderLimits.maxStringChars();
+        if (charLen >= 0 && charLen <= maxChars) {
             String s = snapshot.valueString(instance);
             return s != null ? s : "";
         }
-        String sliced = HeapHolderSupport.decodeArraySlice(value, coder, offset, SpiderLimits.MAX_STRING_CHARS);
+        String sliced = HeapHolderSupport.decodeArraySlice(value, coder, offset, maxChars);
         return sliced == null ? "" : sliced + "...";
     }
 
     private String decodeCharArray(Instance instance) {
         int len = HeapHolderSupport.arrayLength(instance);
-        if (len >= 0 && len <= SpiderLimits.MAX_STRING_CHARS) {
+        int maxChars = SpiderLimits.maxStringChars();
+        if (len >= 0 && len <= maxChars) {
             String s = snapshot.valueString(instance);
             if (s != null) {
                 return s;
             }
         }
-        int take = len < 0 ? SpiderLimits.MAX_STRING_CHARS : Math.min(len, SpiderLimits.MAX_STRING_CHARS);
+        int take = len < 0 ? maxChars : Math.min(len, maxChars);
         String sliced = HeapHolderSupport.decodeArraySlice(instance, null, null, take);
         if (sliced == null) {
             return "";
         }
-        return len > SpiderLimits.MAX_STRING_CHARS ? sliced + "..." : sliced;
+        return len > maxChars ? sliced + "..." : sliced;
     }
 
     public byte[] toByteArray(Object _instance) {
@@ -272,8 +274,8 @@ public class NetbeansHeapHolder implements IHeapHolder {
         if (len < 0) {
             return null;
         }
-        if (len > SpiderLimits.MAX_BYTE_ARRAY) {
-            len = SpiderLimits.MAX_BYTE_ARRAY;
+        if (len > SpiderLimits.maxByteArray()) {
+            len = SpiderLimits.maxByteArray();
         }
         return HeapHolderSupport.getBytes(array, 0, len);
     }
