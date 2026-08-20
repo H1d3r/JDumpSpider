@@ -5,7 +5,6 @@ import org.graalvm.visualvm.lib.jfluid.heap.GraalvmHeapHolder;
 import org.netbeans.lib.profiler.heap.NetbeansHeapHolder;
 
 import java.io.*;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -18,21 +17,30 @@ public class Main {
 
     public static String run(String[] args) throws Exception {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        if (out == null) {
-            out = new PrintStream(bout);
+        PrintStream runOut = out;
+        boolean closeRunOut = false;
+        if (runOut == null) {
+            runOut = new PrintStream(bout);
+            closeRunOut = true;
         }
-        if (args.length < 1) {
-            System.out.println("please give a heap filepath.");
-        } else {
-            Main _main = new Main();
-            _main.heapfile = new File(args[0]);
-            if (_main.heapfile.exists() && _main.heapfile.isFile()) {
-                if (args.length > 1) {
-                    _main.flag.addAll(Arrays.asList(args).subList(1, args.length));
-                }
-                _main.call(out);
+        try {
+            if (args.length < 1) {
+                runOut.println("please give a heap filepath.");
             } else {
-                System.out.println("file not exist!");
+                Main _main = new Main();
+                _main.heapfile = new File(args[0]);
+                if (_main.heapfile.exists() && _main.heapfile.isFile()) {
+                    if (args.length > 1) {
+                        _main.flag.addAll(Arrays.asList(args).subList(1, args.length));
+                    }
+                    _main.call(runOut);
+                } else {
+                    runOut.println("file not exist!");
+                }
+            }
+        } finally {
+            if (closeRunOut) {
+                runOut.close();
             }
         }
         return bout.toString();
@@ -43,13 +51,20 @@ public class Main {
             return "In async call, you must give a result file path";
         Thread thread = new Thread(new Runnable() {
             public void run() {
+                FileOutputStream fos = null;
                 try {
                     String result = Main.run(args);
-                    FileOutputStream fos = new FileOutputStream(args[1]);
+                    fos = new FileOutputStream(args[1]);
                     fos.write(result.getBytes());
-                    fos.close();
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     throw new RuntimeException(e);
+                } finally {
+                    if (fos != null) {
+                        try {
+                            fos.close();
+                        } catch (IOException ignored) {
+                        }
+                    }
                 }
             }
         });
@@ -88,30 +103,55 @@ public class Main {
     public int call(PrintStream out) throws Exception {
         int ver = getFileVersion();
         float classVersion = Float.parseFloat(System.getProperty("java.class.version"));
-        IHeapHolder heapHolder;
+        IHeapHolder heapHolder = null;
+        PrintStream fileOut = null;
+        PrintStream targetOut = out;
 
-        if (ver == 1 || classVersion < 52) {
-            heapHolder = new NetbeansHeapHolder(heapfile);
-        } else {
-            heapHolder = new GraalvmHeapHolder(heapfile);
-        }
-        if (flag.contains("export-strings")) {
-            spiderCall(new ExportAllString(), heapHolder, out);
+        try {
+            try {
+                if (ver == 1 || classVersion < 52) {
+                    heapHolder = new NetbeansHeapHolder(heapfile);
+                } else {
+                    heapHolder = new GraalvmHeapHolder(heapfile);
+                }
+            } catch (Throwable t) {
+                targetOut.println("[-] Failed to open heap dump: " + t.getMessage());
+                if (t instanceof Error) {
+                    throw (Error) t;
+                }
+                throw new Exception("Failed to open heap dump", t);
+            }
+            if (flag.contains("export-strings")) {
+                if (!spiderCall(new ExportAllString(), heapHolder, targetOut)) {
+                    return 1;
+                }
+                return 0;
+            }
+            if (flag.contains("-out")) {
+                String outFilePath = getArgValue("-out");
+                System.out.println("[+] Output to: " + outFilePath);
+                fileOut = new PrintStream(new FileOutputStream(outFilePath), true);
+                targetOut = fileOut;
+            }
+            for (int i = 0; i < allSpiders.length; i++) {
+                if (!spiderCall(allSpiders[i], heapHolder, targetOut)) {
+                    targetOut.println("[-] abort remaining spiders after fatal error.");
+                    break;
+                }
+            }
+            targetOut.println("===========================================");
             return 0;
+        } finally {
+            if (heapHolder != null) {
+                heapHolder.dispose();
+            }
+            if (fileOut != null) {
+                fileOut.close();
+            } else if (targetOut != null) {
+                targetOut.flush();
+            }
+            System.gc();
         }
-        if (flag.contains("-out")) {
-            String outFilePath = getArgValue("-out");
-            System.out.println("[+] Output to: " + outFilePath);
-            out = new PrintStream(new FileOutputStream(outFilePath), true);
-        }
-        for (ISpider spider : allSpiders) {
-            spiderCall(spider, heapHolder, out);
-        }
-        out.println("===========================================");
-        heapHolder.dispose();
-        out.close();
-        System.gc();
-        return 0;
     }
 
     private String getArgValue(String flagStr) throws Exception {
@@ -122,27 +162,62 @@ public class Main {
         }
     }
 
-    private void spiderCall(ISpider spider, IHeapHolder heapHolder, PrintStream out) {
+    private boolean spiderCall(ISpider spider, IHeapHolder heapHolder, PrintStream out) {
         out.println("===========================================");
         out.println(spider.getName());
         out.println("-------------");
-        String result = spider.sniff(heapHolder);
-        if (!(result == null) && !result.equals("")) {
-            out.println(result);
-        } else {
-            out.println("not found!\r\n");
+        try {
+            String result = spider.sniff(heapHolder);
+            if (result != null && result.length() > 0) {
+                out.println(result);
+            } else {
+                out.println("not found!\r\n");
+            }
+            return true;
+        } catch (StackOverflowError e) {
+            out.println("[-] aborted: stack overflow (cyclic object graph)\r\n");
+            return true;
+        } catch (OutOfMemoryError e) {
+            System.gc();
+            out.println("[-] aborted: out of memory\r\n");
+            return false;
         }
     }
 
     public int getFileVersion() {
+        FileInputStream io = null;
         try {
-            FileInputStream io = new FileInputStream(heapfile);
-            io.skip(17);
-            byte subVersion = (byte) io.read();
-            io.close();
-            return Integer.parseInt(Character.valueOf((char) subVersion).toString());
+            io = new FileInputStream(heapfile);
+            byte[] header = new byte[18];
+            int n = 0;
+            while (n < header.length) {
+                int r = io.read(header, n, header.length - n);
+                if (r < 0) {
+                    break;
+                }
+                n += r;
+            }
+            if (n < 18) {
+                throw new IOException("file too small to be a heap dump");
+            }
+            String magic = new String(header, 0, 12, "US-ASCII");
+            if (!"JAVA PROFILE".equals(magic)) {
+                throw new IOException("not a HPROF heap dump (missing JAVA PROFILE header)");
+            }
+            char versionChar = (char) (header[17] & 0xff);
+            if (versionChar < '0' || versionChar > '9') {
+                throw new IOException("invalid HPROF version byte");
+            }
+            return versionChar - '0';
         } catch (Exception e) {
             throw new RuntimeException(e);
+        } finally {
+            if (io != null) {
+                try {
+                    io.close();
+                } catch (IOException ignored) {
+                }
+            }
         }
     }
 }

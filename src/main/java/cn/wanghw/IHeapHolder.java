@@ -21,6 +21,8 @@ public interface IHeapHolder {
 
     List getInstances(Object javaClass);
 
+    Iterator getInstancesIterator(Object javaClass);
+
     List getFields(Object javaClass);
 
     String getClassName(Object javaClass);

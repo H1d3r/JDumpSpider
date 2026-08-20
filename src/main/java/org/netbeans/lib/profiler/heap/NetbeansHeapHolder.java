@@ -2,6 +2,8 @@ package org.netbeans.lib.profiler.heap;
 
 
 import cn.wanghw.IHeapHolder;
+import cn.wanghw.utils.HeapHolderSupport;
+import cn.wanghw.utils.SpiderLimits;
 import cn.wanghw.utils._StringJoiner;
 import org.netbeans.modules.profiler.oql.engine.api.impl.Snapshot;
 
@@ -48,6 +50,10 @@ public class NetbeansHeapHolder implements IHeapHolder {
             return ((JavaClass) javaClass).getInstances();
         }
         return new ArrayList();
+    }
+
+    public Iterator getInstancesIterator(Object javaClass) {
+        return HeapHolderSupport.instancesIterator(javaClass);
     }
 
     public List getFields(Object javaClass) {
@@ -125,6 +131,9 @@ public class NetbeansHeapHolder implements IHeapHolder {
 
     public HashMap<String, String> getFieldsByNameList(Object instance, HashMap<String, String> fieldList) {
         HashMap<String, String> result = new HashMap<String, String>();
+        if (instance == null || fieldList == null) {
+            return result;
+        }
         for (Map.Entry<String, String> fieldName : fieldList.entrySet()) {
             result.put(fieldName.getKey(), getFieldStringValue(instance, fieldName.getValue()));
         }
@@ -165,6 +174,9 @@ public class NetbeansHeapHolder implements IHeapHolder {
     }
 
     public Object getFieldValue(Object _instance, String fieldName) {
+        if (_instance == null || fieldName == null || !(_instance instanceof Instance)) {
+            return null;
+        }
         Instance instance = (Instance) _instance;
         if (fieldName.contains(".")) {
             Object fInstance = instance.getValueOfField(fieldName.substring(0, fieldName.indexOf(".")));
@@ -189,45 +201,81 @@ public class NetbeansHeapHolder implements IHeapHolder {
     }
 
     public String toString(Object _instance) {
+        return toStringRecursive(_instance, new HashSet(), 0);
+    }
+
+    private String toStringRecursive(Object _instance, HashSet visited, int depth) {
+        if (_instance == null || !(_instance instanceof Instance)) {
+            return null;
+        }
+        if (depth > SpiderLimits.MAX_TOSTRING_DEPTH) {
+            return "";
+        }
         Instance instance = (Instance) _instance;
+        Long id = Long.valueOf(instance.getInstanceId());
+        if (!visited.add(id)) {
+            return "";
+        }
         String instanceClassName = instance.getJavaClass().getName();
-        if (instanceClassName.equals("java.lang.String")) {
-            PrimitiveArrayDump arrayDump = (PrimitiveArrayDump) (instance.getValueOfField("value"));
-            if (arrayDump == null)
-                return "";
-            if (arrayDump.getJavaClass().getName().equals("byte[]")) {
-                List<String> byteStr = arrayDump.getValues();
-                byte[] target = new byte[byteStr.size()];
-                for (int i = 0; i < byteStr.size(); i++) {
-                    target[i] = (byte) Integer.parseInt(byteStr.get(i));
-                }
-                return new String(target);
-            }
-            return join("", arrayDump.getValues());
-        } else if (instanceClassName.equals("char[]")) {
-            return join("", ((PrimitiveArrayDump) instance).getValues());
-        } else {
-            Object val = instance.getValueOfField("value");
-            if (val instanceof Instance) {
-                return toString(val);
-            }
+        if ("java.lang.String".equals(instanceClassName)) {
+            return decodeString(instance);
+        }
+        if ("char[]".equals(instanceClassName)) {
+            return decodeCharArray(instance);
+        }
+        Object val = instance.getValueOfField("value");
+        if (val instanceof Instance) {
+            return toStringRecursive(val, visited, depth + 1);
         }
         return null;
     }
 
-    public byte[] toByteArray(Object _instance) {
-        if (_instance instanceof PrimitiveArrayDump) {
-            PrimitiveArrayDump arrayDump = (PrimitiveArrayDump) _instance;
-            if (arrayDump.getJavaClass().getName().equals("byte[]")) {
-                List<String> byteStr = arrayDump.getValues();
-                byte[] target = new byte[byteStr.size()];
-                for (int i = 0; i < byteStr.size(); i++) {
-                    target[i] = (byte) Integer.parseInt(byteStr.get(i));
-                }
-                return target;
+    private String decodeString(Instance instance) {
+        Object value = instance.getValueOfField("value");
+        Object coder = instance.getValueOfField("coder");
+        Object offset = instance.getValueOfField("offset");
+        Object count = instance.getValueOfField("count");
+        int charLen = HeapHolderSupport.estimateCharLength(value, coder, offset, count);
+        if (charLen >= 0 && charLen <= SpiderLimits.MAX_STRING_CHARS) {
+            String s = snapshot.valueString(instance);
+            return s != null ? s : "";
+        }
+        String sliced = HeapHolderSupport.decodeArraySlice(value, coder, offset, SpiderLimits.MAX_STRING_CHARS);
+        return sliced == null ? "" : sliced + "...";
+    }
+
+    private String decodeCharArray(Instance instance) {
+        int len = HeapHolderSupport.arrayLength(instance);
+        if (len >= 0 && len <= SpiderLimits.MAX_STRING_CHARS) {
+            String s = snapshot.valueString(instance);
+            if (s != null) {
+                return s;
             }
         }
-        return null;
+        int take = len < 0 ? SpiderLimits.MAX_STRING_CHARS : Math.min(len, SpiderLimits.MAX_STRING_CHARS);
+        String sliced = HeapHolderSupport.decodeArraySlice(instance, null, null, take);
+        if (sliced == null) {
+            return "";
+        }
+        return len > SpiderLimits.MAX_STRING_CHARS ? sliced + "..." : sliced;
+    }
+
+    public byte[] toByteArray(Object _instance) {
+        if (!(_instance instanceof PrimitiveArrayInstance)) {
+            return null;
+        }
+        PrimitiveArrayInstance array = (PrimitiveArrayInstance) _instance;
+        if (!"byte[]".equals(array.getJavaClass().getName())) {
+            return null;
+        }
+        int len = array.getLength();
+        if (len < 0) {
+            return null;
+        }
+        if (len > SpiderLimits.MAX_BYTE_ARRAY) {
+            len = SpiderLimits.MAX_BYTE_ARRAY;
+        }
+        return HeapHolderSupport.getBytes(array, 0, len);
     }
 
     public String join(CharSequence delimiter,
@@ -281,6 +329,8 @@ public class NetbeansHeapHolder implements IHeapHolder {
     }
 
     public void dispose() {
+        HeapHolderSupport.closeQuietly(_heap);
+        HeapHolderSupport.closeQuietly(snapshot);
         _heap = null;
         snapshot = null;
     }

@@ -3,8 +3,10 @@ package cn.wanghw.spider;
 import cn.wanghw.IHeapHolder;
 import cn.wanghw.ISpider;
 import cn.wanghw.utils.HashMapUtils;
+import cn.wanghw.utils.SpiderLimits;
 
 import java.util.HashMap;
+import java.util.Iterator;
 
 public class PropertySource05 implements ISpider {
 
@@ -21,8 +23,11 @@ public class PropertySource05 implements ISpider {
             if (clazz == null)
                 return null;
             HashMap<String, String> values = new HashMap<String, String>();
-            for (Object instance : heapHolder.getInstances(clazz)) {
-                values.putAll(heapHolder.arrayDump(heapHolder.getMap(instance)));
+            Iterator it = heapHolder.getInstancesIterator(clazz);
+            int visited = 0;
+            while (it.hasNext() && visited < SpiderLimits.MAX_INSTANCES_PER_CLASS) {
+                values.putAll(heapHolder.arrayDump(heapHolder.getMap(it.next())));
+                visited++;
             }
             result.append(HashMapUtils.dumpString(values, false));
         } catch (Exception ex) {
